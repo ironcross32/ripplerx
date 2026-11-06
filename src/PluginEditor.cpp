@@ -19,6 +19,25 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     setSize(650, 485);
     setScaleFactor(audioProcessor.scale); // FIX - Logic
 
+    // ACCESSIBILITY - section groups cover the whole editor so child coordinates are unchanged
+    setTitle("RipplerX");
+    // Do NOT make the editor a keyboardFocusContainer. When the host focuses the plugin HWND
+    // (e.g. OSARA's F6 in REAPER), JUCE calls grabKeyboardFocus() on the peer's top-level
+    // wrapper component, whose traverser stops at keyboard focus containers instead of
+    // descending into them. Since the editor itself doesn't want focus, nothing got focused.
+    // Leaving it as a plain component lets the wrapper find the first control (as Surge does).
+    audioProcessor.params.addParameterListener("a_partials", this);
+    audioProcessor.params.addParameterListener("b_partials", this);
+    {
+        int order = 1;
+        for (auto* group : { &headerGroup, &noiseGroup, &malletGroup, &resAGroup, &resBGroup, &mixGroup }) {
+            addAndMakeVisible(*group);
+            group->setBounds(getLocalBounds());
+            group->setExplicitFocusOrder(order++);
+        }
+    }
+    juce::Desktop::getInstance().addFocusChangeListener(this);
+
     juce::Component::SafePointer<RipplerXAudioProcessorEditor> safeThis(this); // FIX Renoise DAW crashing on plugin instantiated
     MessageManager::callAsync([safeThis] {
         if (safeThis != nullptr)
@@ -38,15 +57,19 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
             image, 1.0f, juce::Colours::transparentBlack, 
             image, 1.0f, juce::Colours::transparentBlack);
     }
-    addAndMakeVisible(logo);
+    headerGroup.addAndMakeVisible(logo);
+    logo.setTitle("About RipplerX");
+    logo.setExplicitFocusOrder(1);
     logo.setBounds(col, row+5, 120, 16);
     logo.onClick = [this] {
-        about->setVisible(true);
+        about->show();
     };
 
 #if defined(DEBUG)
     addAndMakeVisible(presetExport);
     presetExport.setAlpha(0.f);
+    presetExport.setAccessible(false);
+    presetExport.setWantsKeyboardFocus(false);
     presetExport.setTooltip("DEBUG ONLY - Exports preset to debug console");
     presetExport.setButtonText("Export");
     presetExport.setBounds(10, 10, 100, 25);
@@ -58,7 +81,9 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     };
 #endif
 
-    addAndMakeVisible(sun);
+    headerGroup.addAndMakeVisible(sun);
+    sun.setTitle("Switch to light theme");
+    sun.setExplicitFocusOrder(2);
     sun.setAlpha(0.9f);
     juce::MemoryInputStream sunStream(BinaryData::sun_png, BinaryData::sun_pngSize, false);
     juce::Image sunImage = juce::ImageFileFormat::loadFrom(sunStream);
@@ -74,9 +99,12 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
         audioProcessor.toggleTheme();
         loadTheme();
         repaint();
+        moon.grabKeyboardFocus(); // sun is now hidden, keep focus on the theme toggle
     };
 
-    addAndMakeVisible(moon);
+    headerGroup.addAndMakeVisible(moon);
+    moon.setTitle("Switch to dark theme");
+    moon.setExplicitFocusOrder(3);
     moon.setAlpha(0.9f);
     juce::MemoryInputStream moonStream(BinaryData::moon_png, BinaryData::moon_pngSize, false);
     juce::Image moonImage = juce::ImageFileFormat::loadFrom(moonStream);
@@ -92,11 +120,16 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
         audioProcessor.toggleTheme();
         loadTheme();
         repaint();
+        sun.grabKeyboardFocus(); // moon is now hidden, keep focus on the theme toggle
     };
 
     col += 215;
 
-    addAndMakeVisible(velButton);
+    headerGroup.addAndMakeVisible(velButton);
+    velButton.setTitle("Velocity mapping");
+    velButton.setToggleable(true);
+    velButton.setToggleState(audioProcessor.velMap, NotificationType::dontSendNotification);
+    velButton.setExplicitFocusOrder(4);
     velButton.setTooltip("Toggle velocity mapping, can also be set by holding Shift+Drag on knobs");
     velButton.setColour(juce::TextButton::buttonColourId, Colour(globals::COLOR_BACKGROUND));
     velButton.setColour(juce::TextButton::buttonOnColourId, Colour(globals::COLOR_VEL));
@@ -107,17 +140,21 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
             audioProcessor.velMap = !audioProcessor.velMap;
             velButton.setToggleState(audioProcessor.velMap, NotificationType::dontSendNotification);
             repaintVelSliders();
+            velMapChanged();
         };
     velButton.setButtonText("Vel Map");
     velButton.setBounds(col, row, 80, 25);
 
-    addAndMakeVisible(polyLabel);
+    headerGroup.addAndMakeVisible(polyLabel);
+    polyLabel.setAccessible(false);
     polyLabel.setColour(juce::Label::ColourIds::textColourId, Colour(globals::COLOR_NEUTRAL_LIGHT));
     polyLabel.setFont(FontOptions(16.0f));
     polyLabel.setText("Voices", NotificationType::dontSendNotification);
     polyLabel.setBounds(col+80+5, row, 50, 25);
 
-    addAndMakeVisible(polyMenu);
+    headerGroup.addAndMakeVisible(polyMenu);
+    polyMenu.setTitle("Voices");
+    polyMenu.setExplicitFocusOrder(5);
     polyMenu.addItem("1", 1);
     polyMenu.addItem("4", 2);
     polyMenu.addItem("8", 3);
@@ -134,7 +171,9 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
         };
     polyMenu.setBounds(col+80+50+5,row,55,25);
 
-    addAndMakeVisible(presetMenu);
+    headerGroup.addAndMakeVisible(presetMenu);
+    presetMenu.setTitle("Patch");
+    presetMenu.setExplicitFocusOrder(7);
     presetMenu.setText("Patch");
     presetMenu.addItem("Import", 7777);
     presetMenu.addItem("Export", 8888);
@@ -198,6 +237,10 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
                             juce::MemoryBlock mb;
                             audioProcessor.copyXmlToBinary(*xml, mb);
                             audioProcessor.setStateInformation(mb.getData(), (int)mb.getSize());
+                            a11y::announce("Imported patch " + file.getFileNameWithoutExtension());
+                        }
+                        else {
+                            a11y::announce("Could not import patch");
                         }
                     });
                 resetPresetMenu();
@@ -217,7 +260,10 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
 
                         if (auto xml = audioProcessor.getXmlFromBinary(mb.getData(), (int)mb.getSize())) {
                             juce::String xmlString = xml->toString();
-                            file.replaceWithText(xmlString.toStdString());
+                            if (file.replaceWithText(xmlString.toStdString()))
+                                a11y::announce("Patch exported");
+                            else
+                                a11y::announce("Could not export patch");
                         }
                     });
                 resetPresetMenu();
@@ -225,12 +271,15 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
             else if (value > 0) {
                 MessageManager::callAsync([this, value] {
                     audioProcessor.setCurrentProgram(value - 1);
+                    a11y::announce("Loaded patch " + audioProcessor.getProgramName(value - 1));
                 });
             }
         };
     presetMenu.setBounds(getWidth() - 110, row, 100, 25);
 
-    addAndMakeVisible(settingsBtn);
+    headerGroup.addAndMakeVisible(settingsBtn);
+    settingsBtn.setTitle("Settings");
+    settingsBtn.setExplicitFocusOrder(6);
     settingsBtn.setBounds(Rectangle<int>(25, 25).withPosition(presetMenu.getBounds().getTopLeft().translated(-25 - 10+3, 0)));
     settingsBtn.setAlpha(0.f);
     settingsBtn.onClick = [this]() { showSettingsMenu(); };
@@ -238,14 +287,16 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     // NOISE SLIDERS
     col = 10; row += 35;
 
-    addAndMakeVisible(noiseLabel);
+    noiseGroup.addAndMakeVisible(noiseLabel);
+    noiseLabel.setAccessible(false);
     noiseLabel.setColour(juce::Label::ColourIds::textColourId, Colour(globals::COLOR_NEUTRAL_LIGHT));
     noiseLabel.setFont(FontOptions(16.0f));
     noiseLabel.setText("NOISE", NotificationType::dontSendNotification);
     noiseLabel.setBounds(col, row, 70, 25);
     noiseLabel.setJustificationType(Justification::centred);
 
-    addAndMakeVisible(noiseFilterMenu);
+    noiseGroup.addAndMakeVisible(noiseFilterMenu);
+    noiseFilterMenu.setTitle("Noise filter mode");
     noiseFilterMenu.addItem("LP", 1);
     noiseFilterMenu.addItem("BP", 2);
     noiseFilterMenu.addItem("HP", 3);
@@ -255,29 +306,31 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     row += 25;
 
     noiseMix = std::make_unique<Rotary>(p, "noise_mix", "Mix", LabelFormat::Percent, "vel_noise_mix");
-    addAndMakeVisible(*noiseMix);
+    noiseGroup.addAndMakeVisible(*noiseMix);
     noiseMix->setBounds(col,row,70,75);
 
     noiseRes = std::make_unique<Rotary>(p, "noise_res", "Res", LabelFormat::Percent, "vel_noise_res");
-    addAndMakeVisible(*noiseRes);
+    noiseGroup.addAndMakeVisible(*noiseRes);
     noiseRes->setBounds(col,row+75,70,75);
 
     noiseFreq = std::make_unique<Rotary>(p, "noise_filter_freq", "Freq", LabelFormat::Hz, "vel_noise_freq");
-    addAndMakeVisible(*noiseFreq);
+    noiseGroup.addAndMakeVisible(*noiseFreq);
     noiseFreq->setBounds(col+70,row,70,75);
 
     noiseQ = std::make_unique<Rotary>(p, "noise_filter_q", "Q", LabelFormat::float1, "vel_noise_q");
-    addAndMakeVisible(*noiseQ);
+    noiseGroup.addAndMakeVisible(*noiseQ);
     noiseQ->setBounds(col+70,row+75,70,75);
 
     row += 165;
     envelopeLabel.setColour(juce::Label::ColourIds::textColourId, Colour(globals::COLOR_NEUTRAL_LIGHT));
     envelopeLabel.setFont(FontOptions(16.0f));
-    addAndMakeVisible(envelopeLabel);
+    noiseGroup.addAndMakeVisible(envelopeLabel);
+    envelopeLabel.setAccessible(false);
     envelopeLabel.setText("ADSR", NotificationType::dontSendNotification);
     envelopeLabel.setBounds(col+10, row, 60, 25);
 
-    addAndMakeVisible(noiseOSC);
+    noiseGroup.addAndMakeVisible(noiseOSC);
+    noiseOSC.setTitle("Noise oscillator");
     noiseDCAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.params, "noise_osc", noiseOSC);
     noiseOSC.setComponentID("noise_osc");
     noiseOSC.setSliderStyle(Slider::LinearBar);
@@ -289,60 +342,63 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     row += 25;
 
     noiseA = std::make_unique<Rotary>(p, "noise_att", "Attack", LabelFormat::millis, "vel_noise_att");
-    addAndMakeVisible(*noiseA);
+    noiseGroup.addAndMakeVisible(*noiseA);
     noiseA->setBounds(col,row,70,75);
 
     noiseS = std::make_unique<Rotary>(p, "noise_sus", "Sus", LabelFormat::Percent, "vel_noise_sus");
-    addAndMakeVisible(*noiseS);
+    noiseGroup.addAndMakeVisible(*noiseS);
     noiseS->setBounds(col,row+75,70,75);
 
     noiseD = std::make_unique<Rotary>(p, "noise_dec", "Decay", LabelFormat::millis, "vel_noise_dec");
-    addAndMakeVisible(*noiseD);
+    noiseGroup.addAndMakeVisible(*noiseD);
     noiseD->setBounds(col+70,row,70,75);
 
     noiseR = std::make_unique<Rotary>(p, "noise_rel", "Release", LabelFormat::millis, "vel_noise_rel");
-    addAndMakeVisible(*noiseR);
+    noiseGroup.addAndMakeVisible(*noiseR);
     noiseR->setBounds(col+70,row+75,70,75);
 
     noiseATen = std::make_unique<TensionCtrl>(p, "noise_att_ten", false);
-    addAndMakeVisible(*noiseATen);
+    noiseGroup.addAndMakeVisible(*noiseATen);
     noiseATen->setBounds(Rectangle<int>(15, 15).withPosition(noiseA->getBounds().getTopRight().translated(-10, 0)));
 
     noiseDTen = std::make_unique<TensionCtrl>(p, "noise_dec_ten", true);
-    addAndMakeVisible(*noiseDTen);
+    noiseGroup.addAndMakeVisible(*noiseDTen);
     noiseDTen->setBounds(Rectangle<int>(15, 15).withPosition(noiseD->getBounds().getTopRight().translated(-10, 0)));
 
     noiseRTen = std::make_unique<TensionCtrl>(p, "noise_rel_ten", true);
-    addAndMakeVisible(*noiseRTen);
+    noiseGroup.addAndMakeVisible(*noiseRTen);
     noiseRTen->setBounds(Rectangle<int>(15, 15).withPosition(noiseR->getBounds().getTopRight().translated(-10, 0)));
 
     // MALLET
     col += 160;
     row = 35 + 10;
 
-    addAndMakeVisible(malletLabel);
+    malletGroup.addAndMakeVisible(malletLabel);
+    malletLabel.setAccessible(false);
     malletLabel.setColour(juce::Label::ColourIds::textColourId, Colour(globals::COLOR_NEUTRAL_LIGHT));
     malletLabel.setFont(FontOptions(16.0f));
     malletLabel.setText("MALLET", NotificationType::dontSendNotification);
     malletLabel.setBounds(col+5, row, 70, 25);
 
-    addAndMakeVisible(malletButton);
+    malletGroup.addAndMakeVisible(malletButton);
     malletButton.setBounds(malletLabel.getBounds().expanded(15, 5));
     malletButton.setAlpha(0.f);
     malletButton.onClick = [this] { showMalletMenu(); };
+    setupMenuButton(malletButton, "Mallet type", "mallet_type");
+    malletButton.jog = [this](int dir) { jogChoice("mallet_type", malletChoices, dir); };
 
     row += 25;
 
     malletMix = std::make_unique<Rotary>(p, "mallet_mix", "Mix", LabelFormat::Percent, "vel_mallet_mix");
-    addAndMakeVisible(*malletMix);
+    malletGroup.addAndMakeVisible(*malletMix);
     malletMix->setBounds(col,row,70,75);
 
     malletRes = std::make_unique<Rotary>(p, "mallet_res", "Res", LabelFormat::Percent, "vel_mallet_res");
-    addAndMakeVisible(*malletRes);
+    malletGroup.addAndMakeVisible(*malletRes);
     malletRes->setBounds(col,row+75,70,75);
 
     malletStiff = std::make_unique<Rotary>(p, "mallet_stiff", "Stiff", LabelFormat::Hz, "vel_mallet_stiff");
-    addAndMakeVisible(*malletStiff);
+    malletGroup.addAndMakeVisible(*malletStiff);
     malletStiff->setBounds(col,row+75+75,70,75);
 
     //addAndMakeVisible(ktrackBtn);
@@ -356,7 +412,8 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     //        toggleUIComponents();
     //    };
 
-    addAndMakeVisible(ktrackSlider);
+    malletGroup.addAndMakeVisible(ktrackSlider);
+    ktrackSlider.setTitle("Mallet key tracking");
     ktrackAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.params, "mallet_ktrack", ktrackSlider);
     ktrackSlider.setComponentID("ktrack");
     ktrackSlider.setSliderStyle(Slider::LinearBar);
@@ -365,14 +422,15 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     ktrackSlider.setBounds(col, row + 75 + 75 + 15, 70, 25);
 
     malletPitch = std::make_unique<Rotary>(p, "mallet_pitch", "Pitch", LabelFormat::PitchSemis, "", true);
-    addAndMakeVisible(*malletPitch);
+    malletGroup.addAndMakeVisible(*malletPitch);
     malletPitch->setBounds(col, row + 75 + 75 + 40, 70, 75);
 
     malletFilter = std::make_unique<Rotary>(p, "mallet_filter", "Filter", LabelFormat::FilterLPHP, "", true);
-    addAndMakeVisible(*malletFilter);
+    malletGroup.addAndMakeVisible(*malletFilter);
     malletFilter->setBounds(col, row + 75 + 75 + 75 + 40, 70, 75);
 
-    addAndMakeVisible(malletSubLabel);
+    malletGroup.addAndMakeVisible(malletSubLabel);
+    malletSubLabel.setAccessible(false);
     malletSubLabel.setColour(juce::Label::ColourIds::textColourId, Colour(globals::COLOR_NEUTRAL_LIGHT));
     malletSubLabel.setFont(FontOptions(11.0f));
     malletSubLabel.setJustificationType(Justification::centred);
@@ -384,13 +442,16 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     col += 90;
     row = 35 + 10;
 
-    addAndMakeVisible(aLabel);
+    resAGroup.addAndMakeVisible(aLabel);
+    aLabel.setAccessible(false);
     aLabel.setColour(juce::Label::ColourIds::textColourId, Colour(globals::COLOR_NEUTRAL_LIGHT));
     aLabel.setFont(FontOptions(16.0f));
     aLabel.setText("A RES", NotificationType::dontSendNotification);
     aLabel.setBounds(col, row, 50, 25);
 
-    addAndMakeVisible(aOn);
+    resAGroup.addAndMakeVisible(aOn);
+    aOn.setTitle("Resonator A enabled");
+    aOn.setToggleable(true);
     juce::MemoryInputStream ainputStream(BinaryData::on_png, BinaryData::on_pngSize, false);
     juce::Image aimage = juce::ImageFileFormat::loadFrom(ainputStream);
     if (aimage.isValid())
@@ -411,7 +472,9 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
         });
     };
 
-    addAndMakeVisible(aModel);
+    resAGroup.addAndMakeVisible(aModel);
+    aModel.setAccessible(false); // reached through aModelBtn
+    aModel.setWantsKeyboardFocus(false);
     aModel.setColour(ComboBox::backgroundColourId, Colour(globals::COLOR_ACTIVE));
     aModel.setColour(ComboBox::arrowColourId, Colours::white);
     aModel.setColour(ComboBox::textColourId, Colours::white);
@@ -433,7 +496,9 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
 
     // because comboBoxes only work with ordered items
     // use an invisible button on top to show a menu with the items in custom order
-    addAndMakeVisible(aModelBtn);
+    resAGroup.addAndMakeVisible(aModelBtn);
+    setupMenuButton(aModelBtn, "Resonator A model", "a_model");
+    aModelBtn.jog = [this](int dir) { jogChoice("a_model", modelChoices, dir); };
     aModelBtn.setAlpha(0.0f);
     aModelBtn.setBounds(aModel.getBounds().expanded(2));
     aModelBtn.onClick = [this]()
@@ -441,7 +506,9 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
             showModelMenu(true);
         };
 
-    addAndMakeVisible(aPartials);
+    resAGroup.addAndMakeVisible(aPartials);
+    aPartials.setAccessible(false); // reached through aPartialsBtn
+    aPartials.setWantsKeyboardFocus(false);
     aPartials.addItem("4", 1);
     aPartials.addItem("8", 2);
     aPartials.addItem("16", 3);
@@ -455,7 +522,10 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
 
     // because comboBoxes only work with ordered items
     // use an invisible button on top to show a menu with the items in custom order
-    addAndMakeVisible(aPartialsBtn);
+    resAGroup.addAndMakeVisible(aPartialsBtn);
+    setupMenuButton(aPartialsBtn, "Resonator A partials", "a_partials");
+    aPartialsBtn.setTooltip("Number of partials");
+    aPartialsBtn.jog = [this](int dir) { jogChoice("a_partials", partialsChoices, dir); };
     aPartialsBtn.setAlpha(0.0f);
     aPartialsBtn.setBounds(aPartials.getBounds().expanded(2));
     aPartialsBtn.onClick = [this]()
@@ -467,53 +537,56 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     row += 25;
 
     aDecay = std::make_unique<Rotary>(p, "a_decay", "Decay", LabelFormat::seconds2f, "vel_a_decay");
-    addAndMakeVisible(*aDecay);
+    resAGroup.addAndMakeVisible(*aDecay);
     aDecay->setBounds(col,row,70,75);
 
     aDamp = std::make_unique<Rotary>(p, "a_damp", "Material", LabelFormat::Percent, "vel_a_damp", true);
-    addAndMakeVisible(*aDamp);
+    resAGroup.addAndMakeVisible(*aDamp);
     aDamp->setBounds(col+70,row,70,75);
 
     aRadius = std::make_unique<Rotary>(p, "a_radius", "Radius", LabelFormat::Percent);
-    addAndMakeVisible(*aRadius);
+    resAGroup.addAndMakeVisible(*aRadius);
     aRadius->setBounds(col+70,row,70,75);
 
     aHit = std::make_unique<Rotary>(p, "a_hit", "Hit", LabelFormat::Percent, "vel_a_hit");
-    addAndMakeVisible(*aHit);
+    resAGroup.addAndMakeVisible(*aHit);
     aHit->setBounds(col+70+70,row,70,75);
     
     aRel = std::make_unique<Rotary>(p, "a_rel", "Release", LabelFormat::Percent);
-    addAndMakeVisible(*aRel);
+    resAGroup.addAndMakeVisible(*aRel);
     aRel->setBounds(col+70+70+70,row,70,75);
 
     row += 75;
 
     aTone = std::make_unique<Rotary>(p, "a_tone", "Tone", LabelFormat::Percent, "vel_a_tone", true);
-    addAndMakeVisible(*aTone);
+    resAGroup.addAndMakeVisible(*aTone);
     aTone->setBounds(col,row,70,75);
 
     aInharm = std::make_unique<Rotary>(p, "a_inharm", "Inharm", LabelFormat::float2_100, "vel_a_inharm");
-    addAndMakeVisible(*aInharm);
+    resAGroup.addAndMakeVisible(*aInharm);
     aInharm->setBounds(col+70,row,70,75);
 
     aRatio = std::make_unique<Rotary>(p, "a_ratio", "Ratio", LabelFormat::float1);
-    addAndMakeVisible(*aRatio);
+    resAGroup.addAndMakeVisible(*aRatio);
     aRatio->setBounds(col+70+70,row,70,75);
 
     aCut = std::make_unique<Rotary>(p, "a_cut", "Filter", LabelFormat::FilterLPHP, "", true);
-    addAndMakeVisible(*aCut);
+    resAGroup.addAndMakeVisible(*aCut);
     aCut->setBounds(col+70+70+70,row,70,75);
 
     // RES B
     row += 90;
 
-    addAndMakeVisible(bLabel);
+    resBGroup.addAndMakeVisible(bLabel);
+    bLabel.setAccessible(false);
     bLabel.setColour(juce::Label::ColourIds::textColourId, Colour(globals::COLOR_NEUTRAL_LIGHT));
     bLabel.setFont(FontOptions(16.0f));
     bLabel.setText("B RES", NotificationType::dontSendNotification);
     bLabel.setBounds(col, row, 50, 25);
 
-    addAndMakeVisible(bOn);
+    resBGroup.addAndMakeVisible(bOn);
+    bOn.setTitle("Resonator B enabled");
+    bOn.setToggleable(true);
     juce::MemoryInputStream binputStream(BinaryData::on_png, BinaryData::on_pngSize, false);
     juce::Image bimage = juce::ImageFileFormat::loadFrom(binputStream);
     if (bimage.isValid())
@@ -534,7 +607,9 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
         });
     };
 
-    addAndMakeVisible(bModel);
+    resBGroup.addAndMakeVisible(bModel);
+    bModel.setAccessible(false); // reached through bModelBtn
+    bModel.setWantsKeyboardFocus(false);
     bModel.setColour(ComboBox::backgroundColourId, Colour(globals::COLOR_ACTIVE));
     bModel.setColour(ComboBox::arrowColourId, Colours::white);
     bModel.setColour(ComboBox::textColourId, Colours::white);
@@ -556,7 +631,9 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
 
     // because comboBoxes only work with ordered items
     // use an invisible button on top to show a menu with the items in custom order
-    addAndMakeVisible(bModelBtn);
+    resBGroup.addAndMakeVisible(bModelBtn);
+    setupMenuButton(bModelBtn, "Resonator B model", "b_model");
+    bModelBtn.jog = [this](int dir) { jogChoice("b_model", modelChoices, dir); };
     bModelBtn.setAlpha(0.0f);
     bModelBtn.setBounds(bModel.getBounds().expanded(2));
     bModelBtn.onClick = [this]()
@@ -564,7 +641,9 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
             showModelMenu(false);
         };
 
-    addAndMakeVisible(bPartials);
+    resBGroup.addAndMakeVisible(bPartials);
+    bPartials.setAccessible(false); // reached through bPartialsBtn
+    bPartials.setWantsKeyboardFocus(false);
     bPartials.addItem("4", 1);
     bPartials.addItem("8", 2);
     bPartials.addItem("16", 3);
@@ -578,7 +657,10 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
 
     // because comboBoxes only work with ordered items
     // use an invisible button on top to show a menu with the items in custom order
-    addAndMakeVisible(bPartialsBtn);
+    resBGroup.addAndMakeVisible(bPartialsBtn);
+    setupMenuButton(bPartialsBtn, "Resonator B partials", "b_partials");
+    bPartialsBtn.setTooltip("Number of partials");
+    bPartialsBtn.jog = [this](int dir) { jogChoice("b_partials", partialsChoices, dir); };
     bPartialsBtn.setAlpha(0.0f);
     bPartialsBtn.setBounds(bPartials.getBounds().expanded(2));
     bPartialsBtn.onClick = [this]()
@@ -589,48 +671,49 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     row += 25;
 
     bDecay = std::make_unique<Rotary>(p, "b_decay", "Decay", LabelFormat::seconds2f, "vel_b_decay");
-    addAndMakeVisible(*bDecay);
+    resBGroup.addAndMakeVisible(*bDecay);
     bDecay->setBounds(col,row,70,75);
 
     bDamp = std::make_unique<Rotary>(p, "b_damp", "Material", LabelFormat::Percent, "vel_b_damp", true);
-    addAndMakeVisible(*bDamp);
+    resBGroup.addAndMakeVisible(*bDamp);
     bDamp->setBounds(col+70,row,70,75);
 
     bRadius = std::make_unique<Rotary>(p, "b_radius", "Radius", LabelFormat::Percent);
-    addAndMakeVisible(*bRadius);
+    resBGroup.addAndMakeVisible(*bRadius);
     bRadius->setBounds(col+70,row,70,75);
 
     bHit = std::make_unique<Rotary>(p, "b_hit", "Hit", LabelFormat::Percent, "vel_b_hit");
-    addAndMakeVisible(*bHit);
+    resBGroup.addAndMakeVisible(*bHit);
     bHit->setBounds(col+70+70,row,70,75);
 
     bRel = std::make_unique<Rotary>(p, "b_rel", "Release", LabelFormat::Percent);
-    addAndMakeVisible(*bRel);
+    resBGroup.addAndMakeVisible(*bRel);
     bRel->setBounds(col+70+70+70,row,70,75);
 
     row += 75;
 
     bTone = std::make_unique<Rotary>(p, "b_tone", "Tone", LabelFormat::Percent, "vel_b_tone", true);
-    addAndMakeVisible(*bTone);
+    resBGroup.addAndMakeVisible(*bTone);
     bTone->setBounds(col,row,70,75);
 
     bInharm = std::make_unique<Rotary>(p, "b_inharm", "Inharm", LabelFormat::float2_100, "vel_b_inharm");
-    addAndMakeVisible(*bInharm);
+    resBGroup.addAndMakeVisible(*bInharm);
     bInharm->setBounds(col+70,row,70,75);
 
     bRatio = std::make_unique<Rotary>(p, "b_ratio", "Ratio", LabelFormat::float1);
-    addAndMakeVisible(*bRatio);
+    resBGroup.addAndMakeVisible(*bRatio);
     bRatio->setBounds(col+70+70,row,70,75);
 
     bCut = std::make_unique<Rotary>(p, "b_cut", "Filter", LabelFormat::FilterLPHP, "", true);
-    addAndMakeVisible(*bCut);
+    resBGroup.addAndMakeVisible(*bCut);
     bCut->setBounds(col+70+70+70,row,70,75);
 
     // COUPLING
     col += 70*4+20;
     row = 35 + 10;
 
-    addAndMakeVisible(couple);
+    mixGroup.addAndMakeVisible(couple);
+    couple.setTitle("Coupling");
     couple.setColour(ComboBox::backgroundColourId, Colour(globals::COLOR_ACTIVE));
     couple.setColour(ComboBox::arrowColourId, Colours::white);
     couple.setColour(ComboBox::textColourId, Colours::white);
@@ -644,14 +727,15 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     row += 25;
 
     abMix = std::make_unique<Rotary>(p, "ab_mix", "A:B", LabelFormat::ABMix, "", true);
-    addAndMakeVisible(*abMix);
+    mixGroup.addAndMakeVisible(*abMix);
     abMix->setBounds(col,row,70,75);
 
     abSplit = std::make_unique<Rotary>(p, "ab_split", "Split", LabelFormat::Percent);
-    addAndMakeVisible(*abSplit);
+    mixGroup.addAndMakeVisible(*abSplit);
     abSplit->setBounds(col,row,70,75);
 
-    addAndMakeVisible(pitchLabel);
+    mixGroup.addAndMakeVisible(pitchLabel);
+    pitchLabel.setAccessible(false);
     pitchLabel.setColour(juce::Label::ColourIds::textColourId, Colour(globals::COLOR_NEUTRAL));
     pitchLabel.setFont(FontOptions(15.0f));
     pitchLabel.setJustificationType(Justification::centred);
@@ -659,18 +743,19 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     pitchLabel.setBounds(col, row+85-2, 70, 20);
 
     aPitch = std::make_unique<Pitch>(p, "A Pitch", "a_coarse", "a_fine");
-    addAndMakeVisible(*aPitch);
+    mixGroup.addAndMakeVisible(*aPitch);
     aPitch->setBounds(col+5,row+105,70-10,20);
 
     bPitch = std::make_unique<Pitch>(p, "B Pitch", "b_coarse", "b_fine");
-    addAndMakeVisible(*bPitch);
+    mixGroup.addAndMakeVisible(*bPitch);
     bPitch->setBounds(col+5,row+130,70-10,20);
 
     gain = std::make_unique<Rotary>(p, "gain", "Gain", LabelFormat::dB, "", true);
-    addAndMakeVisible(*gain);
+    mixGroup.addAndMakeVisible(*gain);
     gain->setBounds(col, row+75*3+25+10, 70, 75);
 
-    addAndMakeVisible(bendLabel);
+    mixGroup.addAndMakeVisible(bendLabel);
+    bendLabel.setAccessible(false);
     bendLabel.setColour(juce::Label::ColourIds::textColourId, Colour(globals::COLOR_NEUTRAL));
     bendLabel.setFont(FontOptions(15.0f));
     bendLabel.setJustificationType(Justification::centred);
@@ -678,7 +763,7 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     bendLabel.setBounds(col, row + 85 - 2 + 75, 70, 20);
 
     bendPitch = std::make_unique<Pitch>(p, "Bend Range", "bend_range", "");
-    addAndMakeVisible(*bendPitch);
+    mixGroup.addAndMakeVisible(*bendPitch);
     bendPitch->setBounds(col + 5, row + 105 + 75, 70 - 10, 20);
 
     // KEYBOARD
@@ -705,6 +790,72 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
     addAndMakeVisible(*about);
     about->setBounds(getBounds());
     about->setVisible(false);
+    about->onClose = [this] { logo.grabKeyboardFocus(); };
+
+    // ACCESSIBILITY - names and Tab order within each section
+    {
+        auto setup = [](juce::Component& c, const juce::String& title, int order) {
+            c.setTitle(title);
+            c.setExplicitFocusOrder(order);
+        };
+
+        setup(noiseFilterMenu, "Noise filter mode", 1);
+        setup(*noiseMix, "Noise mix", 2);
+        setup(*noiseFreq, "Noise filter frequency", 3);
+        setup(*noiseRes, "Noise resonator amount", 4);
+        setup(*noiseQ, "Noise filter Q", 5);
+        setup(noiseOSC, "Noise oscillator", 6);
+        setup(*noiseA, "Noise attack", 7);
+        setup(*noiseATen, "Noise attack curve", 8);
+        setup(*noiseD, "Noise decay", 9);
+        setup(*noiseDTen, "Noise decay curve", 10);
+        setup(*noiseS, "Noise sustain", 11);
+        setup(*noiseR, "Noise release", 12);
+        setup(*noiseRTen, "Noise release curve", 13);
+
+        setup(malletButton, "Mallet type", 1);
+        setup(*malletMix, "Mallet mix", 2);
+        setup(*malletRes, "Mallet resonator amount", 3);
+        setup(*malletStiff, "Mallet stiffness", 4);
+        setup(ktrackSlider, "Mallet key tracking", 5);
+        setup(*malletPitch, "Mallet sample pitch", 6);
+        setup(*malletFilter, "Mallet sample filter", 7);
+
+        auto setupRes = [&setup](const juce::String& prefix, juce::Component& on, juce::Component& model, juce::Component& partials,
+            Rotary& decay, Rotary& damp, Rotary& radius, Rotary& hit, Rotary& rel, Rotary& tone, Rotary& inharm, Rotary& ratio, Rotary& cut)
+        {
+            setup(on, prefix + " enabled", 1);
+            setup(model, prefix + " model", 2);
+            setup(partials, prefix + " partials", 3);
+            setup(decay, prefix + " decay", 4);
+            setup(damp, prefix + " material", 5);
+            setup(radius, prefix + " tube radius", 6);
+            setup(hit, prefix + " hit position", 7);
+            setup(rel, prefix + " release", 8);
+            setup(tone, prefix + " tone", 9);
+            setup(inharm, prefix + " inharmonicity", 10);
+            setup(ratio, prefix + " ratio", 11);
+            setup(cut, prefix + " filter", 12);
+        };
+        setupRes("Resonator A", aOn, aModelBtn, aPartialsBtn, *aDecay, *aDamp, *aRadius, *aHit, *aRel, *aTone, *aInharm, *aRatio, *aCut);
+        setupRes("Resonator B", bOn, bModelBtn, bPartialsBtn, *bDecay, *bDamp, *bRadius, *bHit, *bRel, *bTone, *bInharm, *bRatio, *bCut);
+
+        setup(couple, "Coupling", 1);
+        setup(*abMix, "A and B mix", 2);
+        setup(*abSplit, "A to B split", 3);
+        setup(*aPitch, "Resonator A pitch", 4);
+        setup(*bPitch, "Resonator B pitch", 5);
+        setup(*bendPitch, "Pitch bend range", 6);
+        setup(*gain, "Output gain", 7);
+    }
+
+    // purely visual / not usable with a screen reader
+    keyboardComponent.setAccessible(false);
+    keyboardComponent.setWantsKeyboardFocus(false);
+
+    // TYPE-IN (on top of everything)
+    addChildComponent(typeIn);
+    typeIn.setBounds(getLocalBounds());
 
     toggleUIComponents();
     loadTheme();
@@ -712,6 +863,7 @@ RipplerXAudioProcessorEditor::RipplerXAudioProcessorEditor(RipplerXAudioProcesso
 
 RipplerXAudioProcessorEditor::~RipplerXAudioProcessorEditor()
 {
+    juce::Desktop::getInstance().removeFocusChangeListener(this);
     setLookAndFeel(nullptr);
     delete customLookAndFeel;
     audioProcessor.params.removeParameterListener("couple", this);
@@ -720,17 +872,26 @@ RipplerXAudioProcessorEditor::~RipplerXAudioProcessorEditor()
     audioProcessor.params.removeParameterListener("a_model", this);
     audioProcessor.params.removeParameterListener("b_model", this);
     audioProcessor.params.removeParameterListener("mallet_type", this);
+    audioProcessor.params.removeParameterListener("a_partials", this);
+    audioProcessor.params.removeParameterListener("b_partials", this);
 }
 
 void RipplerXAudioProcessorEditor::parameterChanged (const juce::String& parameterID, float newValue) 
 {
     (void)parameterID;
     (void)newValue;
-    if (parameterID == "mallet_type") {
-        malletSubLabel.setText(audioProcessor.params.getParameter("mallet_type")->getCurrentValueAsText(), dontSendNotification);
-    }
-    juce::MessageManager::callAsync([this] { 
-        toggleUIComponents();
+    juce::Component::SafePointer<RipplerXAudioProcessorEditor> safeThis(this);
+    juce::MessageManager::callAsync([safeThis, parameterID] {
+        if (safeThis == nullptr) return;
+        if (parameterID == "mallet_type") {
+            safeThis->malletSubLabel.setText(safeThis->audioProcessor.params.getParameter("mallet_type")->getCurrentValueAsText(), dontSendNotification);
+            a11y::notifyValue(safeThis->malletButton);
+        }
+        else if (parameterID == "a_model") a11y::notifyValue(safeThis->aModelBtn);
+        else if (parameterID == "b_model") a11y::notifyValue(safeThis->bModelBtn);
+        else if (parameterID == "a_partials") a11y::notifyValue(safeThis->aPartialsBtn);
+        else if (parameterID == "b_partials") a11y::notifyValue(safeThis->bPartialsBtn);
+        safeThis->toggleUIComponents();
     });
 };
 
@@ -742,6 +903,10 @@ void RipplerXAudioProcessorEditor::toggleUIComponents()
     auto b_model = (int)audioProcessor.params.getRawParameterValue("b_model")->load();
     auto is_serial = (bool)audioProcessor.params.getRawParameterValue("couple")->load();
     auto mallet_type = (MalletType)audioProcessor.params.getRawParameterValue("mallet_type")->load();
+
+    // toggle state is what screen readers report as checked / not checked
+    aOn.setToggleState(a_on, dontSendNotification);
+    bOn.setToggleState(b_on, dontSendNotification);
 
     auto alpha = a_on ? 1.0f : 0.5f;
     aModel.setAlpha(alpha);
@@ -962,6 +1127,64 @@ void RipplerXAudioProcessorEditor::repaintVelSliders()
     noiseR.get()->repaint();
 }
 
+void RipplerXAudioProcessorEditor::globalFocusChanged(juce::Component* focusedComponent)
+{
+    a11y::groupfocus::focusChanged(focusedComponent);
+}
+
+bool RipplerXAudioProcessorEditor::jumpToGroup(int direction)
+{
+    if (about != nullptr && about->isVisible())
+        return false;
+
+    const std::array<a11y::SectionGroup*, 6> groups { &headerGroup, &noiseGroup, &malletGroup, &resAGroup, &resBGroup, &mixGroup };
+    const int n = (int)groups.size();
+
+    auto* focused = juce::Component::getCurrentlyFocusedComponent();
+    int current = -1;
+    for (int i = 0; i < n; ++i)
+        if (focused != nullptr && groups[(size_t)i]->isParentOf(focused))
+            current = i;
+
+    // Skip sections with nothing focusable, wrapping around at either end
+    for (int step = 1; step <= n; ++step) {
+        int idx = current < 0
+            ? (direction > 0 ? step - 1 : n - step)
+            : ((current + direction * step) % n + n) % n;
+        if (auto* target = groups[(size_t)idx]->getFirstControl()) {
+            target->grabKeyboardFocus();
+            return true;
+        }
+    }
+    return false;
+}
+
+bool RipplerXAudioProcessorEditor::keyPressed(const juce::KeyPress& key)
+{
+    // Alt+, / Alt+. (Option on macOS) jump between sections, like Surge XT.
+    // Shifted variants (< and >) are accepted too.
+    const auto mods = key.getModifiers();
+    if (mods.isAltDown() && !mods.isCtrlDown() && !mods.isCommandDown()) {
+        const auto code = key.getKeyCode();
+        const auto ch = key.getTextCharacter();
+        if (code == ',' || code == '<' || ch == ',' || ch == '<')
+            return jumpToGroup(-1);
+        if (code == '.' || code == '>' || ch == '.' || ch == '>')
+            return jumpToGroup(1);
+    }
+
+    // JUCE buttons only respond to Enter, screen reader users also expect Space to work
+    if (key == juce::KeyPress::spaceKey) {
+        if (auto* button = dynamic_cast<juce::Button*>(juce::Component::getCurrentlyFocusedComponent())) {
+            if (isParentOf(button)) {
+                button->triggerClick();
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void RipplerXAudioProcessorEditor::resized()
 {
 }
@@ -990,8 +1213,10 @@ void RipplerXAudioProcessorEditor::showSettingsMenu()
 
     auto menuPos = localPointToGlobal(settingsBtn.getBounds().getBottomRight());
     menu.showMenuAsync(PopupMenu::Options()
+        .withTargetComponent(settingsBtn)
         .withTargetScreenArea({ menuPos.getX() - 125, menuPos.getY(), 1, 1 }),
         [this, stereoizer, reuseVoices, fadeoutRepeats](int result) {
+            a11y::refocusAsync(settingsBtn); // keep keyboard focus after the menu closes
             if (result == 0) return;
             if (result == 1) audioProcessor.setScale(1.f);
             if (result == 2) audioProcessor.setScale(1.25f);
@@ -1022,26 +1247,20 @@ void RipplerXAudioProcessorEditor::showMalletMenu()
     auto malletType = (int)audioProcessor.params.getRawParameterValue("mallet_type")->load() + 1;
 
     PopupMenu mallets;
-    mallets.addItem(1, "Impulse", true, malletType == 1);
-    mallets.addSeparator();
-    mallets.addItem(13, "Click 1", true, malletType == 13);
-    mallets.addItem(14, "Click 2", true, malletType == 14);
-    mallets.addItem(18, "Click 3", true, malletType == 18);
-    mallets.addItem(24, "Strike", true, malletType == 24);
-    mallets.addItem(23, "Wood", true, malletType == 23);
-    mallets.addItem(21, "Metal 1", true, malletType == 21);
-    mallets.addItem(22, "Metal 2", true, malletType == 22);
-    mallets.addItem(25, "Perc 1", true, malletType == 25);
-    mallets.addItem(26, "Perc 2", true, malletType == 26);
-    mallets.addItem(19, "Blip", true, malletType == 19);
-    mallets.addItem(20, "Blop", true, malletType == 20);
+    for (auto& choice : malletChoices) {
+        mallets.addItem(choice.id, choice.label, true, malletType == choice.id);
+        if (choice.id == 1)
+            mallets.addSeparator();
+    }
     mallets.addSeparator();
     mallets.addItem(1000, "Load File", true, malletType == 12);
 
     auto menuPos = localPointToGlobal(malletLabel.getBounds().getBottomLeft());
     mallets.showMenuAsync(PopupMenu::Options()
+        .withTargetComponent(malletButton)
         .withTargetScreenArea({ menuPos.getX(), menuPos.getY(), 1, 1 }),
         [this](int result) {
+            a11y::refocusAsync(malletButton); // keep keyboard focus after the menu closes
             if (result == 0) return;
             auto param = audioProcessor.params.getParameter("mallet_type");
 
@@ -1061,6 +1280,7 @@ void RipplerXAudioProcessorEditor::showMalletMenu()
                         MessageManager::callAsync([this, path, param]() {
                             audioProcessor.malletSampler->loadSample(path);
                             param->setValueNotifyingHost(param->convertTo0to1(float(kUserFile)));
+                            a11y::announce("Loaded mallet sample " + juce::File(path).getFileName());
                         });
                     });
             }
@@ -1076,24 +1296,15 @@ void RipplerXAudioProcessorEditor::showModelMenu(bool AorB)
     auto choice = (int)audioProcessor.params.getRawParameterValue(AorB ? "a_model" : "b_model")->load() + 1;
 
     PopupMenu mallets;
-    mallets.addItem(1,  "String", true, choice == 1);
-    mallets.addItem(2,  "Beam", true, choice == 2);
-    mallets.addItem(3,  "Squared", true, choice == 3);
-    mallets.addItem(11, "Bell", true, choice == 11);
-    mallets.addItem(4,  "Membrane", true, choice == 4);
-    mallets.addItem(5,  "Plate", true, choice == 5);
-    mallets.addItem(6,  "Drumhead", true, choice == 6);
-    mallets.addItem(12, "Djembe", true, choice == 12);
-    mallets.addItem(7,  "Marimba", true, choice == 7);
-    mallets.addItem(10, "Marimba2", true, choice == 10);
-    mallets.addItem(8,  "OpenTube", true, choice == 8);
-    mallets.addItem(9,  "ClosedTube", true, choice == 9);
+    for (auto& c : modelChoices)
+        mallets.addItem(c.id, c.label, true, choice == c.id);
 
     auto menuPos = localPointToGlobal((AorB ? aModel : bModel).getBounds().getBottomLeft());
     mallets.showMenuAsync(PopupMenu::Options()
-        .withTargetComponent(*this)
+        .withTargetComponent(AorB ? aModelBtn : bModelBtn)
         .withTargetScreenArea({ menuPos.getX(), menuPos.getY(), 1, 1 }),
         [this, AorB](int result) {
+            a11y::refocusAsync(AorB ? aModelBtn : bModelBtn); // keep keyboard focus after the menu closes
             if (result == 0) return;
             auto param = audioProcessor.params.getParameter(AorB ? "a_model" : "b_model");
             param->setValueNotifyingHost(param->convertTo0to1(float(result - 1)));
@@ -1105,21 +1316,85 @@ void RipplerXAudioProcessorEditor::showPartialsMenu(bool AorB)
     auto choice = (int)audioProcessor.params.getRawParameterValue(AorB ? "a_partials" : "b_partials")->load() + 1;
 
     PopupMenu mallets;
-    mallets.addItem(6, "1", true, choice == 6);
-    mallets.addItem(7, "2", true, choice == 7);
-    mallets.addItem(1, "4", true, choice == 1);
-    mallets.addItem(2, "8", true, choice == 2);
-    mallets.addItem(3, "16", true, choice == 3);
-    mallets.addItem(4, "32", true, choice == 4);
-    mallets.addItem(5, "64", true, choice == 5);
+    for (auto& c : partialsChoices)
+        mallets.addItem(c.id, c.label, true, choice == c.id);
 
     auto menuPos = localPointToGlobal((AorB ? aPartials : bPartials).getBounds().getBottomLeft());
     mallets.showMenuAsync(PopupMenu::Options()
-        .withTargetComponent(*this)
+        .withTargetComponent(AorB ? aPartialsBtn : bPartialsBtn)
         .withTargetScreenArea({ menuPos.getX(), menuPos.getY(), 1, 1 }),
         [this, AorB](int result) {
+            a11y::refocusAsync(AorB ? aPartialsBtn : bPartialsBtn); // keep keyboard focus after the menu closes
             if (result == 0) return;
             auto param = audioProcessor.params.getParameter(AorB ? "a_partials" : "b_partials");
             param->setValueNotifyingHost(param->convertTo0to1(float(result - 1)));
         });
+}
+//==============================================================================
+// ACCESSIBILITY
+
+// choice menus in display order, ids are the param choice index + 1
+const std::vector<RipplerXAudioProcessorEditor::MenuChoice> RipplerXAudioProcessorEditor::modelChoices = {
+    { 1, "String" }, { 2, "Beam" }, { 3, "Squared" }, { 11, "Bell" }, { 4, "Membrane" }, { 5, "Plate" },
+    { 6, "Drumhead" }, { 12, "Djembe" }, { 7, "Marimba" }, { 10, "Marimba2" }, { 8, "OpenTube" }, { 9, "ClosedTube" },
+};
+
+const std::vector<RipplerXAudioProcessorEditor::MenuChoice> RipplerXAudioProcessorEditor::partialsChoices = {
+    { 6, "1" }, { 7, "2" }, { 1, "4" }, { 2, "8" }, { 3, "16" }, { 4, "32" }, { 5, "64" },
+};
+
+const std::vector<RipplerXAudioProcessorEditor::MenuChoice> RipplerXAudioProcessorEditor::malletChoices = {
+    { 1, "Impulse" }, { 13, "Click 1" }, { 14, "Click 2" }, { 18, "Click 3" }, { 24, "Strike" }, { 23, "Wood" },
+    { 21, "Metal 1" }, { 22, "Metal 2" }, { 25, "Perc 1" }, { 26, "Perc 2" }, { 19, "Blip" }, { 20, "Blop" },
+};
+
+void RipplerXAudioProcessorEditor::setupMenuButton(a11y::MenuButton& button, const juce::String& title, const juce::String& paramId)
+{
+    button.setTitle(title);
+    button.getValueText = [this, paramId] {
+        return audioProcessor.params.getParameter(paramId)->getCurrentValueAsText();
+    };
+}
+
+// moves a choice param to the previous / next item in menu order
+void RipplerXAudioProcessorEditor::jogChoice(const juce::String& paramId, const std::vector<MenuChoice>& choices, int direction)
+{
+    auto param = audioProcessor.params.getParameter(paramId);
+    auto current = (int)audioProcessor.params.getRawParameterValue(paramId)->load() + 1;
+
+    int index = -1;
+    for (int i = 0; i < (int)choices.size(); ++i)
+        if (choices[(size_t)i].id == current)
+            index = i;
+
+    // a choice that is not in the list (e.g. a user mallet file) jogs from the start
+    int next = index < 0 ? 0 : juce::jlimit(0, (int)choices.size() - 1, index + direction);
+    if (next == index)
+        return;
+
+    param->beginChangeGesture();
+    param->setValueNotifyingHost(param->convertTo0to1(float(choices[(size_t)next].id - 1)));
+    param->endChangeGesture();
+}
+
+std::vector<Rotary*> RipplerXAudioProcessorEditor::getRotaries()
+{
+    return {
+        noiseMix.get(), noiseRes.get(), noiseFreq.get(), noiseQ.get(), noiseA.get(), noiseD.get(), noiseS.get(), noiseR.get(),
+        malletMix.get(), malletRes.get(), malletStiff.get(), malletPitch.get(), malletFilter.get(),
+        aDecay.get(), aDamp.get(), aTone.get(), aHit.get(), aRel.get(), aInharm.get(), aRatio.get(), aCut.get(), aRadius.get(),
+        bDecay.get(), bDamp.get(), bTone.get(), bHit.get(), bRel.get(), bInharm.get(), bRatio.get(), bCut.get(), bRadius.get(),
+        abMix.get(), abSplit.get(), gain.get(),
+    };
+}
+
+void RipplerXAudioProcessorEditor::velMapChanged()
+{
+    for (auto* r : getRotaries())
+        r->velMapChanged();
+}
+
+void RipplerXAudioProcessorEditor::showTypeIn(juce::Component& target, a11y::ValueWidget& widget)
+{
+    typeIn.show(target, widget);
 }

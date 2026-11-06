@@ -16,12 +16,14 @@
 #include "ui/Pitch.h"
 #include "ui/TensionCtrl.h"
 #include "ui/About.h"
+#include "ui/AccessibilityHelpers.h"
+#include "ui/TypeIn.h"
 
 using namespace globals;
 //==============================================================================
 /**
 */
-class RipplerXAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::AudioProcessorValueTreeState::Listener
+class RipplerXAudioProcessorEditor : public juce::AudioProcessorEditor, public a11y::TypeInHost, private juce::AudioProcessorValueTreeState::Listener, private juce::FocusChangeListener
 {
 public:
     RipplerXAudioProcessorEditor (RipplerXAudioProcessor&);
@@ -33,6 +35,7 @@ public:
     void loadTheme();
     void paint (juce::Graphics&) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress& key) override;
     void repaintVelSliders ();
     void showSettingsMenu();
     void showMalletMenu();
@@ -40,15 +43,38 @@ public:
     void showPartialsMenu(bool AorB);
     void drawGear(Graphics& g, Rectangle<int> bounds, float radius, int segs, Colour color, Colour background);
 
+    // a11y::TypeInHost
+    void showTypeIn(juce::Component& target, a11y::ValueWidget& widget) override;
+
 private:
     RipplerXAudioProcessor& audioProcessor;
     CustomLookAndFeel* customLookAndFeel = nullptr;
+
+    // Screen reader sections, these also define the Tab order between sections
+    a11y::SectionGroup headerGroup { "Header" };
+    a11y::SectionGroup noiseGroup { "Noise" };
+    a11y::SectionGroup malletGroup { "Mallet" };
+    a11y::SectionGroup resAGroup { "Resonator A" };
+    a11y::SectionGroup resBGroup { "Resonator B" };
+    a11y::SectionGroup mixGroup { "Mix and Output" };
+
+    // Choice menus in the order they are displayed: { menu item id, label }
+    struct MenuChoice { int id; const char* label; };
+    static const std::vector<MenuChoice> modelChoices;
+    static const std::vector<MenuChoice> partialsChoices;
+    static const std::vector<MenuChoice> malletChoices;
+    void jogChoice(const juce::String& paramId, const std::vector<MenuChoice>& choices, int direction);
+    void setupMenuButton(a11y::MenuButton& button, const juce::String& title, const juce::String& paramId);
+    void velMapChanged();
+    bool jumpToGroup(int direction); // Alt+, / Alt+. : first control of the previous / next section
+    void globalFocusChanged(juce::Component* focusedComponent) override;
+    std::vector<Rotary*> getRotaries();
 
     Label noiseLabel;
     Label envelopeLabel;
     Label malletLabel;
     Label malletSubLabel;
-    TextButton malletButton;
+    a11y::MenuButton malletButton;
     std::unique_ptr<About> about;
 
     // Top bar
@@ -67,7 +93,7 @@ private:
     // Noise
     ComboBox noiseFilterMenu;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> noiseFilterAttachment;
-    Slider noiseOSC;
+    a11y::BarSlider noiseOSC;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> noiseDCAttachment;
     std::unique_ptr<Rotary> noiseMix;
     std::unique_ptr<Rotary> noiseRes;
@@ -87,17 +113,17 @@ private:
     std::unique_ptr<Rotary> malletStiff;
     std::unique_ptr<Rotary> malletPitch;
     std::unique_ptr<Rotary> malletFilter;
-    Slider ktrackSlider;
+    a11y::BarSlider ktrackSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ktrackAttachment;
 
     // Res A
     Label aLabel;
     ImageButton aOn;
     ComboBox aModel;
-    TextButton aModelBtn;
+    a11y::MenuButton aModelBtn;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> aModelAttachment;
     ComboBox aPartials;
-    TextButton aPartialsBtn;
+    a11y::MenuButton aPartialsBtn;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> aPartialsAttachment;
     std::unique_ptr<Rotary> aDecay;
     std::unique_ptr<Rotary> aDamp;
@@ -113,10 +139,10 @@ private:
     Label bLabel;
     ImageButton bOn;
     ComboBox bModel;
-    TextButton bModelBtn;
+    a11y::MenuButton bModelBtn;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> bModelAttachment;
     ComboBox bPartials;
-    TextButton bPartialsBtn;
+    a11y::MenuButton bPartialsBtn;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> bPartialsAttachment;
     std::unique_ptr<Rotary> bDecay;
     std::unique_ptr<Rotary> bDamp;
@@ -143,6 +169,7 @@ private:
 
     TooltipWindow tooltipWindow;
     juce::MidiKeyboardComponent keyboardComponent;
+    TypeIn typeIn;
 
     static constexpr const char* patchExtension = "*.ripx";
     static constexpr const char* audioExtension = "*.wav;*.aiff;*.aif;*.flac;*.ogg;*.mp3";

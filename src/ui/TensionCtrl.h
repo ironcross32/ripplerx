@@ -1,10 +1,11 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "AccessibilityHelpers.h"
 
 class RipplerXAudioProcessor;
 
-class TensionCtrl : public juce::Component, private juce::AudioProcessorValueTreeState::Listener {
+class TensionCtrl : public juce::Component, public a11y::ValueWidget, private juce::AudioProcessorValueTreeState::Listener {
 public:
     TensionCtrl(RipplerXAudioProcessor& p, juce::String paramId, bool invert);
     ~TensionCtrl() override;
@@ -19,6 +20,20 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& e) override;
 
     void parameterChanged(const juce::String& parameterID, float newValue) override;
+
+    bool keyPressed(const juce::KeyPress& key) override;
+    void focusGained(FocusChangeType) override { repaint(); }
+    void focusLost(FocusChangeType) override { repaint(); }
+
+    // a11y::ValueWidget
+    juce::String getValueTitle() const override;
+    juce::String getValueText() const override;
+    double getNormalisedValue() const override;
+    void setNormalisedValue(double v) override;
+    bool setValueFromText(const juce::String& text) override;
+    void showAccessibleMenu() override;
+
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 protected:
     juce::String paramId;

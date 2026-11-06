@@ -58,8 +58,8 @@ void CustomLookAndFeel::drawLinearSlider(juce::Graphics& g,
 
         if (slider.getComponentID() == "noise_osc") {
             String text;
-            if (slider.isMouseButtonDown())       // mouse is pressed
-                text = String(std::round(slider.getValue() * 1000) / 10.f) + " %";
+            if (slider.isMouseButtonDown() || slider.hasKeyboardFocus(false))
+                text = slider.getTextFromValue(slider.getValue());
             else
                 text = "OSC";
 
@@ -70,8 +70,8 @@ void CustomLookAndFeel::drawLinearSlider(juce::Graphics& g,
 
         if (slider.getComponentID() == "ktrack") {
             String text;
-            if (slider.isMouseButtonDown())       // mouse is pressed
-                text = String(std::round(slider.getValue() * 100)) + " %";
+            if (slider.isMouseButtonDown() || slider.hasKeyboardFocus(false))
+                text = slider.getTextFromValue(slider.getValue());
             else
                 text = "KTrack";
 

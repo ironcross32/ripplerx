@@ -8,6 +8,7 @@ TensionCtrl::TensionCtrl(RipplerXAudioProcessor& p, juce::String paramId, bool i
     , paramId(paramId)
     , invert(invert)
 {
+    setWantsKeyboardFocus(true);
     audioProcessor.params.addParameterListener(paramId, this);
 }
 
@@ -20,7 +21,12 @@ void TensionCtrl::parameterChanged(const juce::String& parameterID, float newVal
 {
     (void)parameterID;
     (void)newValue;
-    juce::MessageManager::callAsync([this] { repaint(); });
+    juce::Component::SafePointer<TensionCtrl> safeThis(this);
+    juce::MessageManager::callAsync([safeThis] {
+        if (safeThis == nullptr) return;
+        safeThis->repaint();
+        a11y::notifyValue(*safeThis);
+    });
 }
 
 void TensionCtrl::mouseEnter(const MouseEvent& e)
@@ -69,6 +75,11 @@ void TensionCtrl::paint(juce::Graphics& g)
     }
     
     g.strokePath(path, PathStrokeType(1.0f));
+
+    if (hasKeyboardFocus(false)) {
+        g.setColour(Colour(globals::COLOR_ACTIVE));
+        g.drawRect(bounds, 1);
+    }
 }
 
 void TensionCtrl::mouseDown(const juce::MouseEvent& e)
@@ -112,4 +123,94 @@ void TensionCtrl::mouseDrag(const juce::MouseEvent& e) {
     cur_normed_value -= slider_change;
     auto param = audioProcessor.params.getParameter(paramId);
     param->setValueNotifyingHost(cur_normed_value);
+}
+//==============================================================================
+// Keyboard and screen reader support
+
+static void setTensionNormalised(juce::RangedAudioParameter* param, float norm)
+{
+    param->beginChangeGesture();
+    param->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, norm));
+    param->endChangeGesture();
+}
+
+bool TensionCtrl::keyPressed(const juce::KeyPress& key)
+{
+    auto ek = a11y::getEditKey(key);
+    auto param = audioProcessor.params.getParameter(paramId);
+    auto norm = param->getValue();
+    // the range is -1..1, so 0.005 normalised is 1 %
+    auto step = ek.fine ? 0.0005f : 0.005f;
+
+    switch (ek.action) {
+        case a11y::EditAction::Increase: setTensionNormalised(param, norm + step); break;
+        case a11y::EditAction::Decrease: setTensionNormalised(param, norm - step); break;
+        case a11y::EditAction::IncreaseLarge: setTensionNormalised(param, norm + 0.05f); break;
+        case a11y::EditAction::DecreaseLarge: setTensionNormalised(param, norm - 0.05f); break;
+        case a11y::EditAction::ToMax: setTensionNormalised(param, 1.0f); break;
+        case a11y::EditAction::ToMin: setTensionNormalised(param, 0.0f); break;
+        case a11y::EditAction::ToDefault: setTensionNormalised(param, param->getDefaultValue()); break;
+        case a11y::EditAction::TypeIn: a11y::openTypeIn(*this, *this); break;
+        case a11y::EditAction::Menu: showAccessibleMenu(); break;
+        case a11y::EditAction::None: return false;
+    }
+    return true;
+}
+
+juce::String TensionCtrl::getValueTitle() const
+{
+    return getTitle().isNotEmpty() ? getTitle() : juce::String("Curve");
+}
+
+juce::String TensionCtrl::getValueText() const
+{
+    auto val = audioProcessor.params.getRawParameterValue(paramId)->load();
+    return juce::String((int)std::round(val * 100.0f)) + " %";
+}
+
+double TensionCtrl::getNormalisedValue() const
+{
+    return audioProcessor.params.getParameter(paramId)->getValue();
+}
+
+void TensionCtrl::setNormalisedValue(double v)
+{
+    setTensionNormalised(audioProcessor.params.getParameter(paramId), (float)v);
+}
+
+bool TensionCtrl::setValueFromText(const juce::String& text)
+{
+    auto number = a11y::parseNumber(text);
+    if (!number)
+        return false;
+    auto param = audioProcessor.params.getParameter(paramId);
+    auto plain = juce::jlimit(-1.0f, 1.0f, (float)(*number / 100.0));
+    setTensionNormalised(param, param->convertTo0to1(plain));
+    return true;
+}
+
+void TensionCtrl::showAccessibleMenu()
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader(getValueTitle());
+    menu.addItem(1, "Enter value...");
+    menu.addItem(2, "Reset to default");
+
+    juce::Component::SafePointer<TensionCtrl> safeThis(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
+        [safeThis](int result) {
+            if (safeThis == nullptr) return;
+            if (result != 1) a11y::refocusAsync(*safeThis); // 1 opens the type-in, which takes focus
+            if (result == 0) return;
+            if (result == 1) a11y::openTypeIn(*safeThis, *safeThis);
+            if (result == 2) {
+                auto param = safeThis->audioProcessor.params.getParameter(safeThis->paramId);
+                setTensionNormalised(param, param->getDefaultValue());
+            }
+        });
+}
+
+std::unique_ptr<juce::AccessibilityHandler> TensionCtrl::createAccessibilityHandler()
+{
+    return std::make_unique<a11y::ValueWidgetHandler>(*this);
 }

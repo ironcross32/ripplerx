@@ -4,6 +4,7 @@
 Meter::Meter(RipplerXAudioProcessor& p)
 	: audioProcessor(p)
 {
+	setAccessible(false); // purely visual
 	startTimerHz(24);
 }
 
