@@ -21,9 +21,9 @@ About::About()
 	helpText.onEscapeKey = [this] { hide(); };
 
 	addAndMakeVisible(githublink);
-	githublink.setURL(URL("https://github.com/tiagolr/ripplerx"));
-	githublink.setButtonText("github.com/tiagolr/ripplerx");
-	githublink.setTitle("Open github.com/tiagolr/ripplerx");
+	githublink.setURL(URL("https://github.com/ironcross32/ripplerx"));
+	githublink.setButtonText("github.com/ironcross32/ripplerx");
+	githublink.setTitle("Open github.com/ironcross32/ripplerx");
 
 	addAndMakeVisible(closeButton);
 	closeButton.setButtonText("Close");

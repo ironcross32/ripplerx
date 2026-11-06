@@ -4,17 +4,17 @@
 </h1>
 <div align="center">
 
-[![Windows Support](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/tiagolr/ripplerx/releases)
-[![Ubuntu Support](https://img.shields.io/badge/Linux-E95420?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/tiagolr/ripplerx/releases)
-[![Mac Support](https://img.shields.io/badge/MACOS-adb8c5?style=for-the-badge&logo=macos&logoColor=white)](https://github.com/tiagolr/ripplerx/releases)
+[![Windows Support](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ironcross32/ripplerx/releases)
+[![Ubuntu Support](https://img.shields.io/badge/Linux-E95420?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/ironcross32/ripplerx/releases)
+[![Mac Support](https://img.shields.io/badge/MACOS-adb8c5?style=for-the-badge&logo=macos&logoColor=white)](https://github.com/ironcross32/ripplerx/releases)
 
 </div>
 <div align="center">
 
-[![GitHub package.json version](https://img.shields.io/github/v/release/tiagolr/ripplerx?color=%40&label=latest)](https://github.com/tiagolr/ripplerx/releases/latest)
-![GitHub issues](https://img.shields.io/github/issues-raw/tiagolr/ripplerx)
-![GitHub all releases](https://img.shields.io/github/downloads/tiagolr/ripplerx/total)
-![Github license](https://img.shields.io/github/license/tiagolr/ripplerx)
+[![GitHub package.json version](https://img.shields.io/github/v/release/ironcross32/ripplerx?color=%40&label=latest)](https://github.com/ironcross32/ripplerx/releases/latest)
+![GitHub issues](https://img.shields.io/github/issues-raw/ironcross32/ripplerx)
+![GitHub all releases](https://img.shields.io/github/downloads/ironcross32/ripplerx/total)
+![Github license](https://img.shields.io/github/license/ironcross32/ripplerx)
 
 </div>
 
@@ -46,13 +46,13 @@ Thanks for your support!
 
 ## Download
 
-* [Download latest release](https://github.com/tiagolr/ripplerx/releases)
+* [Download latest release](https://github.com/ironcross32/ripplerx/releases)
 * Current builds include VST3 and LV2 for Windows, Linux, and macOS, plus AU for macOS.
 * Clap is planned when there is official [JUCE support](https://juce.com/blog/juce-roadmap-update-q3-2024/).
 
 ## Manual
 
-Checkout the [wiki pages](https://github.com/tiagolr/ripplerx/wiki).
+Checkout the [wiki pages](https://github.com/ironcross32/ripplerx/wiki).
 
 ## About
 
@@ -116,7 +116,7 @@ For more details and a list of players, also check this section of the [Surge tu
 ## Build
 
 ```bash
-git clone --recurse-submodules https://github.com/tiagolr/ripplerx.git
+git clone --recurse-submodules https://github.com/ironcross32/ripplerx.git
 
 # windows
 cmake -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE=Release -S . -B ./build
