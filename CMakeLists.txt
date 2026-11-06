@@ -6,7 +6,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(BUILD_STANDALONE "Build Standalone plugin format" ON) # Allow overriding from the command line
 
-project(RipplerX VERSION 1.5.18)
+project(RipplerX VERSION 1.5.20)
 
 add_compile_definitions(PROJECT_VERSION="${PROJECT_VERSION}")
 set(CMAKE_CXX_STANDARD 17)
@@ -46,7 +46,7 @@ juce_add_plugin(${PROJECT_NAME}
         FORMATS ${plugin_formats}
         PRODUCT_NAME "RipplerX"
         BUNDLE_ID "com.tilr.ripplerx"
-        LV2URI "https://github.com/tiagolr/ripplerx"
+        LV2URI "https://github.com/ironcross32/ripplerx"
 )
 
 file(GLOB_RECURSE src
